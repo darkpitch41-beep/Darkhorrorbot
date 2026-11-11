@@ -1,6 +1,6 @@
 Flask
 python-telegram-bot
-gTTS
-moviepy
 Pillow
+moviepy
 requests
+edge-tts
