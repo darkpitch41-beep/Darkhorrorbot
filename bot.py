@@ -1,96 +1,64 @@
-import os, re, textwrap, requests, asyncio, threading
+import os
+import random
+import threading
 from flask import Flask
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from PIL import Image, ImageDraw, ImageFont
-from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
-import edge_tts
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-TOKEN = os.environ.get("BOT_TOKEN")
 app = Flask(__name__)
-
 @app.route('/')
 def home():
-    return "Bot Live Hai!"
+    return "Dark Horror Bot is Live!"
 
-IMAGES = [
-    "https://images.unsplash.com/photo-1509557965875-b88c97052f0e?w=1080&q=80",
-    "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1080&q=80",
-    "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1080&q=80",
-    "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1080&q=80",
-    "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1080&q=80"
+TOKEN = os.environ.get("BOT_TOKEN")
+
+STORIES = [
+    "🏚️ THE LAST CALL\n\nRaat ke 3 baje Aarav ko unknown number se call aaya. Usne uthaya to sirf saans ki awaaz aayi... Agli subah uska phone history me wo number tha hi nahi. Par gallery me ek photo thi - uski sote hue ki, jo usne kabhi nahi li thi.",
+    "🪞 SHEESHA\n\nRiya ne naye ghar me ek purana sheesha lagaya. Har raat 2:47 AM pe sheeshe me uska reflection 2 second late move karta tha. Ek raat usne pucha - Tum kaun ho? Reflection ne bola - Main Riya hu, tum kaun ho?",
+    "🚗 HIGHWAY 47\n\nTruck driver ne raat ko highway pe ek ladki ko lift di. Wo chup-chap baithi rahi. Jab uske ghar pahuche to wo gayab thi. Sirf seat gili thi. Ghar pe uski maa ne bola - Meri beti to 5 saal pehle isi highway pe marr gayi thi.",
+    "📱 LAST SEEN\n\nRohan ka dost 2 saal pehle marr gaya. Par kal raat uska WhatsApp Online dikha. Rohan ne Kaun? likha. Reply aaya - Kabristan me network accha hai, tu kab aa raha hai?",
+    "🏥 WARD NO. 13\n\nHospital ke Ward 13 me koi patient nahi rehta. Par har raat nurse ko waha se bell bajne ki awaaz aati hai. Ek nayi nurse gayi to dekha, bed pe koi baitha tha. Usne bola - Meri dawai... main 10 saal se yahi hu.",
 ]
 
-# Khooni Monday jaisi gehari voice
-async def make_voice(text):
-    c = edge_tts.Communicate(text, voice="hi-IN-MadhurNeural", rate="-12%", pitch="-12Hz")
-    await c.save("voice.mp3")
-
-def make_frame(img_path, text, out_path):
-    img = Image.open(img_path).convert("RGB").resize((1080, 1920))
-    overlay = Image.new("RGBA", (1080, 1920), (0,0,0,0))
-    d2 = ImageDraw.Draw(overlay, "RGBA")
-    d2.rectangle([0, 1200, 1080, 1920], fill=(0,0,0,150))
-    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-    d = ImageDraw.Draw(img)
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 56)
-    except:
-        font = ImageFont.load_default()
-    lines = textwrap.wrap(text, width=26)
-    y = 1320
-    for line in lines:
-        w = d.textbbox((0,0), line, font=font)[2]
-        d.text(((1080-w)//2, y), line, font=font, fill="white", stroke_width=3, stroke_fill="black")
-        y += 80
-    img.save(out_path)
+FACTS = [
+    "Raat 3 baje ko Devil's Hour kehte hai, is time sabse zyada paranormal activity hoti hai.",
+    "Mirror ke saamne 10 min tak bina palak jhapkaye dekhoge to tumhara chehra badalne lagega.",
+    "Agar tumhe lag raha hai ki koi tumhe dekh raha hai, to 70% chance hai ki tumhara dimaag sahi keh raha hai.",
+]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👻 Khooni Monday Style Bot Ready!\nApni story bhejo...")
+    keyboard = [
+        [InlineKeyboardButton("👻 Horror Story", callback_data="story"),
+         InlineKeyboardButton("💀 Scary Fact", callback_data="fact")],
+        [InlineKeyboardButton("🎲 Dare", callback_data="dare")],
+    ]
+    await update.message.reply_text(
+        "Welcome to DARK HORROR BOT 👻\n\nRaat ke 12 baje ke baad is bot ko mat kholna...\nNeeche se choose kar, agar himmat hai to:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-async def make_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    story = update.message.text.strip()
-    if len(story) < 20:
-        await update.message.reply_text("Thodi lambi story bhejo!")
-        return
-    await update.message.reply_text("🎬 Khooni Monday style video bana raha hu... 2 min ruk ja...")
-    try:
-        await make_voice(story)
-        audio = AudioFileClip("voice.mp3")
-        total = audio.duration
-        sentences = re.split(r'(?<=[।.!?])\s+', story)
-        chunks = []
-        cur = ""
-        for s in sentences:
-            if len(cur) + len(s) < 170:
-                cur += " " + s
-            else:
-                chunks.append(cur.strip()); cur = s
-        if cur: chunks.append(cur.strip())
-        if not chunks: chunks = [story]
-        per = total / len(chunks)
-        clips = []
-        for i, chunk in enumerate(chunks):
-            url = IMAGES[i % len(IMAGES)]
-            r = requests.get(url, timeout=15)
-            open(f"img{i}.jpg","wb").write(r.content)
-            make_frame(f"img{i}.jpg", chunk, f"frame{i}.jpg")
-            clip = ImageClip(f"frame{i}.jpg").with_duration(per)
-            clip = clip.resized(lambda t: 1 + 0.08 * t / per)
-            clips.append(clip)
-        final = concatenate_videoclips(clips, method="compose")
-        final = final.with_audio(audio)
-        final.write_videofile("final.mp4", fps=24, codec="libx264", audio_codec="aac", logger=None)
-        await update.message.reply_video(video=open("final.mp4","rb"), caption="🔥 Khooni Monday Style Ready!")
-    except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    data = q.data
+    keyboard = [[InlineKeyboardButton("🔄 Agli Story", callback_data="story"),
+                 InlineKeyboardButton("🏠 Menu", callback_data="menu")]]
+    if data == "story":
+        await q.edit_message_text(random.choice(STORIES), reply_markup=InlineKeyboardMarkup(keyboard))
+    elif data == "fact":
+        await q.edit_message_text(f"💀 SCARY FACT:\n\n{random.choice(FACTS)}", reply_markup=InlineKeyboardMarkup(keyboard))
+    elif data == "dare":
+        dares = ["Aaj raat 3 baje sheeshe me dekh ke apna naam 3 baar bolo.", "Apne kamre ki light band karke 1 min akela baitho.", "Chhat pe jaake ek baar peeche mud ke dekho bina dare."]
+        await q.edit_message_text(f"🎲 DARE:\n\n{random.choice(dares)}", reply_markup=InlineKeyboardMarkup(keyboard))
+    elif data == "menu":
+        await start(update, context)
 
-def run_bot():
-    app2 = ApplicationBuilder().token(TOKEN).build()
-    app2.add_handler(CommandHandler("start", start))
-    app2.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, make_video))
-    app2.run_polling()
+def main():
+    app_bot = ApplicationBuilder().token(TOKEN).build()
+    app_bot.add_handler(CommandHandler("start", start))
+    app_bot.add_handler(CallbackQueryHandler(button_handler))
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000), daemon=True).start()
+    app_bot.run_polling()
 
-threading.Thread(target=run_bot, daemon=True).start()
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    main()
