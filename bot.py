@@ -1,25 +1,50 @@
-import os, requests
+import os
+import random
+import threading
+from flask import Flask
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
-import google.generativeai as genai
-import edge_tts
-from PIL import Image, ImageDraw
-from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-GEMINI_KEY = os.environ.get("GEMINI_KEY")
+TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+PORT = int(os.environ.get("PORT", 10000))
 
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Dark Horror Bot is Live"
+
+STORIES = [
+    "Ek gaon me ek purani haveli thi. Raat 12 baje waha se kisi ke rone ki awaaz aati thi.",
+    "Monday ki raat ek ladka akela jungle wale raste se ja raha tha. Piche se kisi ne uska naam liya.",
+    "Ek purani diary mili, usme likha tha - Agar ye padh rahe ho, to piche mat dekhna.",
+    "Ek school 20 saal se band tha. Ek raat uski khidki me light jalti dikhi."
+]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔥 DARKHORRORMAKER Ready hai Boss!\n\n30 Min ka Video chahiye to likho:\n/video Bhootiya Hostel")
+    msg = "Welcome to Dark Horror Bot. Main hoon Hindi Horror Storyteller. Story ke liye /story likh ke bhej de."
+    await update.message.reply_text(msg)
 
-async def video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await update.message.reply_text("Topic to do! Jaise: /video Bhootiya School")
+async def story(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args) if context.args else "Purani Haveli"
+    one = random.choice(STORIES)
+    final = "TOPIC: " + topic + "\n\n" + one + "\n\nAage ki kahani ke liye /story dobara bhej."
+    await update.message.reply_text(final)
+
+async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Dar lag raha hai? /story likh, ek kahani sunata hu.")
+
+def run_bot():
+    if not TOKEN:
+        print("TELEGRAM_TOKEN missing")
         return
-    await update.message.reply_text(f"Ok Boss! '{topic}' pe 30 MIN ka Video ban raha hai... 🕯️\n25-30 min ruk jao, Video + Thumbnail + Title bhejta hun.")
-    try:
-        prompt = f"Tum Khooni Monday jaisa Hindi Horror Storyteller ho. Topic: {topic}. 5000
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("story", story))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
+    print("Bot Started")
+    application.run_polling()
+
+if __name__ == "__main__":
+    threading.Thread(target=run_bot, daemon=True).start()
+    app.run(host="0.0.0.0", port=PORT)
