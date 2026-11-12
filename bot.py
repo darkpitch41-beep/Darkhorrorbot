@@ -1,80 +1,44 @@
-import os
+import os, requests, threading
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from flask import Flask
-import threading
-from gtts import gTTS
-from PIL import Image, ImageDraw, ImageFont
 
 TOKEN = os.environ.get("BOT_TOKEN")
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Voice Bot Live!"
+    return "Bot Live on Koyeb!"
+
+def get_script(topic):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}"
+    prompt = f"Tu Horror YouTube Script Writer hai. Topic: {topic}. Mujhe 15 minute ki Horror Story likh de Hindi me, 2000 words me. Hook, 3 Scenes, Climax. Last me 15 Image Prompts English me de, 9:16 horror style."
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
+    try:
+        r = requests.post(url, json=data, timeout=60)
+        return r.json()['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e:
+        return "Gemini se script nahi aaya, API Key check kar. Error: " + str(e)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🔥 Voice Automation Bot ON!\n\n"
-        "Likho:\n/video Kali Haveli\n\n"
-        "Bot Script + Voice + Thumbnail bana ke dega."
-    )
+    await update.message.reply_text("🔥 Bot ON hai! Koyeb Free Forever!\n\nLikho: /video Kali Haveli")
 
 async def make_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Topic likho: /video Kali Haveli")
-        return
-
-    topic = " ".join(context.args)
-    await update.message.reply_text(f"⏳ {topic} pe kaam chal raha hai... Voice ban rahi hai...")
-
-    # 1. SCRIPT
-    voice_text = f"Raat ke 12 baje, {topic} ki kahani shuru hoti hai. Gaon wale kehte hai, waha jo gaya, wapas nahi aaya. Rohan ne himmat ki aur andar kadam rakha. Darwaza apne aap band ho gaya. Achanak upar se kisi ke chalne ki awaaz aayi. Jab usne peeche mud ke dekha, to waha koi khada tha, jiska chehra nahi tha. Rohan ne bhaagna shuru kiya, par har darwaza band tha. Subah gaon walo ko sirf uska phone mila."
-    
-    # 2. VOICE BANAO - gTTS
-    try:
-        tts = gTTS(text=voice_text, lang='hi', slow=False)
-        tts.save("voice.mp3")
-        await update.message.reply_audio(audio=open("voice.mp3", 'rb'), caption=f"🎙️ {topic} - Voiceover Ready!")
-    except Exception as e:
-        await update.message.reply_text(f"Voice me error aaya, par script de raha hu.")
-
-    # 3. THUMBNAIL BANAO - Pillow
-    try:
-        img = Image.new('RGB', (1080, 1920), color=(0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        draw.text((80, 800), topic.upper(), fill=(255, 0, 0))
-        draw.text((80, 900), "HORROR STORY", fill=(255, 255, 255))
-        img.save("thumb.jpg")
-        await update.message.reply_photo(photo=open("thumb.jpg", 'rb'), caption="🖼️ Thumbnail Ready!")
-    except Exception as e:
-        pass
-
-    # 4. SCRIPT BHEJO
-    script = f"""🎬 {topic} - FULL PACKAGE
-
-SCRIPT:
-{voice_text}
-
-IMAGE PROMPTS:
-1. Dark horror night, foggy {topic}, scary, 9:16
-2. Boy entering dark house, horror, 9:16
-3. Dark staircase shadow, horror, 9:16
-4. Faceless ghost behind boy, horror, 9:16
-5. Boy running dark corridor, horror, 9:16
-6. Broken phone on floor, horror ending, 9:16
-
-Ab CapCut me: 6 Images + Ye Voice daal do = VIDEO READY ✅
-"""
-    await update.message.reply_text(script)
+    topic = " ".join(context.args) if context.args else "Kali Haveli"
+    await update.message.reply_text(f"⏳ {topic} ki 15 min wali script likh raha hu... 1 min ruk ja...")
+    script = get_script(topic)
+    # Telegram 4000 char limit isliye tukdo me bhejte hai
+    for i in range(0, len(script), 4000):
+        await update.message.reply_text(script[i:i+4000])
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("video", make_video))
-    application.run_polling()
+    app2 = Application.builder().token(TOKEN).build()
+    app2.add_handler(CommandHandler("start", start))
+    app2.add_handler(CommandHandler("video", make_video))
+    app2.run_polling()
